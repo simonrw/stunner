@@ -20,6 +20,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// defines NAT types
+// see RFC 3489 and RFC 4787 for more details
 const (
 	Blocked              = "Blocked"
 	OpenInternet         = "Open Internet"
@@ -31,24 +33,27 @@ const (
 	ChangedAddressError  = "ChangedAddressError"
 )
 
+const Version = "dev"
+
 type RetVal struct {
-	Resp         bool
-	ExternalIP   string
-	ExternalPort int
-	SourceIP     string
-	SourcePort   int
-	ChangedIP    string
-	ChangedPort  int
+	Resp         bool   // did we get a response?
+	ExternalIP   string // what IP did the STUN server see
+	ExternalPort int    // what port did the STUN server see
+	SourceIP     string // what IP did we bind to
+	SourcePort   int    // what port did we bind to
+	ChangedIP    string // what IP did the STUN server see after we sent a change request
+	ChangedPort  int    // what port did the STUN server see after we sent a change request
 }
 
 type CLIFlags struct {
-	STUNServers []string `help:"STUN servers to use for detection" name:"stun-server"`
-	STUNPort    int      `help:"STUN port to use for detection" default:"3478"`
-	SourceIP    string   `help:"Local IP to bind" default:"0.0.0.0"`
-	SourcePort  int      `help:"Local port to bind" default:"54320"`
-	Debug       bool     `help:"Enable debug logging" default:"false"`
-	Software    string   `help:"Software to send for STUN request" default:"tailnode"`
-	DerpMapUrl  string   `help:"URL to fetch DERP map from" default:"https://login.tailscale.com/derpmap/default"`
+	STUNServers []string `help:"STUN servers to use for detection" name:"stun-server" short:"s"`
+	STUNPort    int      `help:"STUN port to use for detection" default:"3478" short:"p"`
+	SourceIP    string   `help:"Local IP to bind" default:"0.0.0.0" short:"i"`
+	SourcePort  int      `help:"Local port to bind" short:"P"`
+	Debug       bool     `help:"Enable debug logging" default:"false" short:"d"`
+	Software    string   `help:"Software to send for STUN request" default:"tailnode" short:"S"`
+	DerpMapUrl  string   `help:"URL to fetch DERP map from" name:"derp-map-url" default:"https://login.tailscale.com/derpmap/default"`
+	Version     bool     `help:"Show version"`
 }
 
 var CLI CLIFlags
@@ -56,12 +61,12 @@ var logger *zap.SugaredLogger
 
 var (
 	bindingRequestType = []byte{0x00, 0x01}
-	magicCookie        = []byte{0x21, 0x12, 0xA4, 0x42}
+	magicCookie        = []byte{0x21, 0x12, 0xA4, 0x42} // defined by RFC 5389
 )
 
 const (
-	attrSoftware    = 0x8022
-	attrFingerprint = 0x8028
+	attrSoftware    = 0x8022 // STUN attribute for software
+	attrFingerprint = 0x8028 // STUN attribute for fingerprint
 )
 
 type TxID [12]byte
@@ -69,6 +74,11 @@ type TxID [12]byte
 func main() {
 	math.New(math.NewSource(time.Now().UnixNano()))
 	k := kong.Parse(&CLI)
+
+	if CLI.Version {
+		fmt.Println(Version)
+		k.Exit(0)
+	}
 	initZapLogger(CLI.Debug)
 	defer logger.Sync()
 
@@ -91,9 +101,22 @@ func main() {
 		logger.Fatal("At least two --stun-server arguments are required to reliably detect NAT types.")
 	}
 
-	results, finalNAT, _, _ := multiServerDetection(stunServers, CLI.SourceIP, CLI.SourcePort, CLI.Software)
+	var sourcePort int
+
+	if CLI.SourcePort == 0 {
+		sourcePort = randomPort()
+	} else {
+		sourcePort = CLI.SourcePort
+	}
+
+	results, finalNAT, _, _ := multiServerDetection(stunServers, CLI.SourceIP, sourcePort, CLI.Software)
 	printTables(results, finalNAT)
 	k.Exit(0)
+}
+
+// generate a random port in the range 49152-65535
+func randomPort() int {
+	return 49152 + math.Intn(16384)
 }
 
 // derpMap is the JSON structure returned by https://login.tailscale.com/derpmap/default.
@@ -171,17 +194,21 @@ type PerServerResult struct {
 }
 
 func multiServerDetection(servers []string, sourceIP string, sourcePort int, software string) ([]PerServerResult, string, string, int) {
+
+	// bind to a local UDP socket on the specified source port
 	sock, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(sourceIP), Port: sourcePort})
 	if err != nil {
 		logger.Debugf("Bind error: %v", err)
-		return nil, Blocked, "", 0
+		return nil, Blocked, "", 0 // we can't bind, so we assume blocked
 	}
 	defer sock.Close()
 
-	_ = sock.SetDeadline(time.Now().Add(5 * time.Minute))
+	_ = sock.SetDeadline(time.Now().Add(5 * time.Minute)) // set a deadline for the socket
 	var results []PerServerResult
 	allPorts := make(map[int]bool)
 
+	// loop through the servers and try discover the NAT type
+	// NOTE: a single request doesn't give us everything we need, so see finalizeNAT for the final answer
 	for _, srv := range servers {
 
 		logger.Debugf("Do Test1 with server=%s", srv)
@@ -203,6 +230,7 @@ func multiServerDetection(servers []string, sourceIP string, sourcePort int, sof
 	return results, finalN, finalIP, finalPort
 }
 
+// look at the results we sent to the STUN servers and determine the NAT type
 func finalizeNAT(results []PerServerResult, ports map[int]bool) (string, string, int) {
 	allBlocked := true
 	for _, r := range results {
@@ -224,6 +252,7 @@ func finalizeNAT(results []PerServerResult, ports map[int]bool) (string, string,
 		return SymmetricNAT, "", 0
 	}
 
+	// NAT RFC mappings
 	priority := map[string]int{
 		OpenInternet:         6,
 		FullCone:             5,
@@ -290,6 +319,8 @@ func getNatType(sock *net.UDPConn, server string, software string) (string, RetV
 	return SymmetricNAT, ret3
 }
 
+// Run a test1/test approach against a STUN server
+// we send a request, then send a change request to determine if we get the same port/IP tuple
 func stunTest(sock *net.UDPConn, hostPort, changeReq, software string) RetVal {
 	var ret RetVal
 	var tx TxID
@@ -373,6 +404,10 @@ func stunTestToIP(sock *net.UDPConn, ip string, port int, changeReq, software st
 	return stunTest(sock, fmt.Sprintf("%s:%d", ip, port), changeReq, software)
 }
 
+// parseSTUNAttributes parses the STUN attributes from the response
+// 0x0001 => MAPPED-ADDRESS
+// 0x0005 => CHANGED-ADDRESS
+// 0x0020 => XOR-MAPPED-ADDRESS
 func parseSTUNAttributes(attrs []byte, ret *RetVal) {
 	var offset int
 	for offset+4 <= len(attrs) {
@@ -413,6 +448,11 @@ func parseSTUNAttributes(attrs []byte, ret *RetVal) {
 	}
 }
 
+// build the STUN request with all of the attributes
+// if we include the SOFTWARE attribute, it will be 0x8022
+// 0x0003 => CHANGE-REQUEST
+// 0x8028 => FINGERPRINT
+// 0x0001 => MAPPED-ADDRESS
 func buildRequest(tx TxID, software string, changeReq []byte) []byte {
 	var attrs []byte
 	if software != "" {
@@ -455,11 +495,13 @@ func compareCookieAndTID(cookie, tid []byte, tx TxID) bool {
 	return string(tid) == string(tx[:])
 }
 
+// Checks whether the first 4 bytes are the correct STUN magic cookie, and whether the next 12 bytes match our transaction ID.
 func fingerPrint(b []byte) uint32 {
 	c := crc32.ChecksumIEEE(b)
 	return c ^ 0x5354554e
 }
 
+// Computes the STUN FINGERPRINT by taking the CRC32-IEEE of the packet data and XORing with 0x5354554e, per RFC5389.
 func stunPad(b []byte) []byte {
 	p := (4 - (len(b) % 4)) % 4
 	if p == 0 {
@@ -468,12 +510,14 @@ func stunPad(b []byte) []byte {
 	return append(b, make([]byte, p)...)
 }
 
+// helper function for appending a 16-bit unsigned integer to a byte slice
 func appendU16(b []byte, v uint16) []byte {
 	var tmp [2]byte
 	binary.BigEndian.PutUint16(tmp[:], v)
 	return append(b, tmp[:]...)
 }
 
+// helper function for appending a 32-bit unsigned integer to a byte slice
 func appendU32(b []byte, v uint32) []byte {
 	var tmp [4]byte
 	binary.BigEndian.PutUint32(tmp[:], v)
@@ -490,7 +534,7 @@ func natDetailFor(n string) NatDetail {
 	case Blocked:
 		return NatDetail{"Hard", "All inbound hole-punch attempts fail."}
 	case OpenInternet:
-		return NatDetail{"Easy", "Public IP is directly reachable (no NAT)."}
+		return NatDetail{"Easy", "Public IP is directly reachable."}
 	case FullCone:
 		return NatDetail{"Easy", "No inbound restrictions once mapped."}
 	case SymmetricUDPFirewall:
@@ -500,7 +544,7 @@ func natDetailFor(n string) NatDetail {
 	case RestricPortNAT:
 		return NatDetail{"Easy", "Inbound only from the same remote IP:port."}
 	case SymmetricNAT:
-		return NatDetail{"Hard", "Different public ports for each remote => breaks simple punching."}
+		return NatDetail{"Hard", "Different public ports for each request."}
 	case ChangedAddressError:
 		return NatDetail{"N/A", "Error or changed address test failed."}
 	default:
