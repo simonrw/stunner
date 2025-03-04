@@ -37,7 +37,7 @@ const (
 	ChangedAddressError            = "ChangedAddressError"
 )
 
-const Version = "dev"
+var Version = "dev"
 
 type RetVal struct {
 	Resp         bool   // did we get a response?
