@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -14,14 +15,18 @@ import (
 	"os"
 	"time"
 
+	"tailscale.com/net/portmapper"
+
+	"github.com/jackpal/gateway"
+
 	"github.com/alecthomas/kong"
 	"github.com/olekukonko/tablewriter"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"tailscale.com/net/netmon"
 )
 
-// defines NAT types
-// see RFC 3489 and RFC 4787 for more details
+// NAT types
 const (
 	Blocked              = "Blocked"
 	OpenInternet         = "Open Internet"
@@ -102,7 +107,6 @@ func main() {
 	}
 
 	var sourcePort int
-
 	if CLI.SourcePort == 0 {
 		sourcePort = randomPort()
 	} else {
@@ -110,6 +114,13 @@ func main() {
 	}
 
 	results, finalNAT, _, _ := multiServerDetection(stunServers, CLI.SourceIP, sourcePort, CLI.Software)
+
+	mappingProtocol := probePortmapAvailability()
+
+	for i := range results {
+		results[i].MappingProtocol = mappingProtocol
+	}
+
 	printTables(results, finalNAT)
 	k.Exit(0)
 }
@@ -187,10 +198,11 @@ func initZapLogger(debug bool) {
 }
 
 type PerServerResult struct {
-	Server       string
-	NATType      string
-	ExternalIP   string
-	ExternalPort int
+	Server          string
+	NATType         string
+	ExternalIP      string
+	ExternalPort    int
+	MappingProtocol string
 }
 
 func multiServerDetection(servers []string, sourceIP string, sourcePort int, software string) ([]PerServerResult, string, string, int) {
@@ -210,11 +222,13 @@ func multiServerDetection(servers []string, sourceIP string, sourcePort int, sof
 	// loop through the servers and try discover the NAT type
 	// NOTE: a single request doesn't give us everything we need, so see finalizeNAT for the final answer
 	for _, srv := range servers {
-
 		logger.Debugf("Do Test1 with server=%s", srv)
 		natType, retVal := getNatType(sock, srv, software)
 
-		logger.Debugf("Result after Test1 server=%s => NAT=%s, IP=%s, Port=%d", srv, natType, retVal.ExternalIP, retVal.ExternalPort) // logs the NAT type and IP/port
+		logger.Debugf("Result after Test1 server=%s => NAT=%s, IP=%s, Port=%d",
+			srv, natType, retVal.ExternalIP, retVal.ExternalPort)
+
+		// We'll fill in MappingProtocol later, from probePortmapAvailability()
 		results = append(results, PerServerResult{
 			Server:       srv,
 			NATType:      natType,
@@ -263,7 +277,6 @@ func finalizeNAT(results []PerServerResult, ports map[int]bool) (string, string,
 		Blocked:              0,
 		ChangedAddressError:  0,
 	}
-
 	bestType := Blocked
 	bestScore := 0
 	var bestIP string
@@ -524,6 +537,51 @@ func appendU32(b []byte, v uint32) []byte {
 	return append(b, tmp[:]...)
 }
 
+
+func probePortmapAvailability() string {
+	// Attempt to discover default gateway
+	gw, _ := gateway.DiscoverGateway()
+	logger.Debugf("gateway discovery returned: %v", gw)
+
+	nm, err := netmon.New(logger.Debugf)
+	if err != nil {
+		logger.Fatalf("netmon.New failed: %v", err)
+	}
+	nm.Start()
+
+	defer nm.Close()
+
+
+	pm := portmapper.NewClient(
+		func(format string, args ...interface{}) {
+			logger.Debugf(format, args...)
+		},
+		nm, nil, nil,
+		func() {},
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	probeResult, err := pm.Probe(ctx)
+	if err != nil {
+		logger.Debugf("pm.Probe => error: %v", err)
+		return "None"
+	}
+
+	// If PCP is found, we label it "PCP".
+	// If PMP is found, we label it "NAT-PMP".
+	// If UPnP is found, we label it "UPnP".
+	if probeResult.PCP {
+		return "PCP"
+	} else if probeResult.PMP {
+		return "NAT-PMP"
+	} else if probeResult.UPnP {
+		return "UPnP"
+	}
+	return "None"
+}
+
 type NatDetail struct {
 	EasyVsHard string
 	Notes      string
@@ -536,13 +594,13 @@ func natDetailFor(n string) NatDetail {
 	case OpenInternet:
 		return NatDetail{"Easy", "Public IP is directly reachable."}
 	case FullCone:
-		return NatDetail{"Easy", "No inbound restrictions once mapped."}
+		return NatDetail{"Easy", "An outbound port can be mapped, and reused for inbound connections."}
 	case SymmetricUDPFirewall:
 		return NatDetail{"Hard", "Heavily restricted inbound or port-changed mapping."}
 	case RestricNAT:
-		return NatDetail{"Easy", "Inbound only from the same remote IP."}
+		return NatDetail{"Easy", "An outbound port can be mapped, inbound only from same remote IP."}
 	case RestricPortNAT:
-		return NatDetail{"Easy", "Inbound only from the same remote IP:port."}
+		return NatDetail{"Easy", "An outbound port can be mapped, inbound only from same IP:port."}
 	case SymmetricNAT:
 		return NatDetail{"Hard", "Different public ports for each request."}
 	case ChangedAddressError:
@@ -554,7 +612,8 @@ func natDetailFor(n string) NatDetail {
 
 func printTables(results []PerServerResult, finalNAT string) {
 	tbl := tablewriter.NewWriter(os.Stdout)
-	tbl.SetHeader([]string{"Stun Server", "Port", "IP"})
+	tbl.SetHeader([]string{"Stun Server", "Port", "IP", "Mapping"})
+
 	for _, r := range results {
 		portStr := "None"
 		ipStr := "None"
@@ -566,13 +625,13 @@ func printTables(results []PerServerResult, finalNAT string) {
 			r.Server,
 			portStr,
 			ipStr,
+			r.MappingProtocol,
 		})
 	}
 	tbl.SetBorder(true)
 	tbl.Render()
 
 	details := natDetailFor(finalNAT)
-
 	tbl2 := tablewriter.NewWriter(os.Stdout)
 	tbl2.SetHeader([]string{"Result", "NAT Type", "Easy/Hard", "Detail"})
 
