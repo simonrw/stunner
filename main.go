@@ -587,21 +587,21 @@ type NatDetail struct {
 func natDetailFor(n string) NatDetail {
 	switch n {
 	case Blocked:
-		return NatDetail{"Hard", "UDP Blocked."}
+		return NatDetail{"Hard", "The NAT or firewall is preventing inbound hole-punch attempts. Outbound connections do not facilitate inbound reachability."}
 	case OpenInternet:
-		return NatDetail{"Easy", "No NAT."}
+		return NatDetail{"Easy", "Your host is directly reachable from the internet."}
 	case EndpointIndependentMapping:
-		return NatDetail{"Easy", "Endpoint-Independent Mapping."}
+		return NatDetail{"Easy", "Reuses the same public port for all remote connections, enabling inbound hole punching from any peer once an outbound packet is sent."}
 	case AddressDependentFiltering:
-		return NatDetail{"Hard", "Address-Dependent Filtering."}
+		return NatDetail{"Hard", "Incoming packets are only accepted from the same remote IP that was used in the initial outbound connection, limiting who can punch in."}
 	case AddressDependentMapping:
-		return NatDetail{"Easy", "Address-Dependent Mapping."}
+		return NatDetail{"Easy", "Uses one public port for each remote IP. Inbound connections must come from that IP."}
 	case AddressAndPortDependentMapping:
-		return NatDetail{"Hard", "Address and Port-Dependent Mapping."}
+		return NatDetail{"Hard", "Allocates different public ports for each remote IP:port combination, making inbound hole punching very difficult."}
 	case ChangedAddressError:
-		return NatDetail{"N/A", "Error or changed address test failed."}
+		return NatDetail{"N/A", "An error occurred during NAT detection preventing a full classification."}
 	default:
-		return NatDetail{"N/A", "Unknown NAT type."}
+		return NatDetail{"N/A", "Unknown NAT type - no conclusive classification could be determined from the tests."}
 	}
 }
 
