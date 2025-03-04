@@ -30,10 +30,10 @@ import (
 const (
 	Blocked                        = "UDP Blocked"
 	OpenInternet                   = "No NAT"
-	EndpointIndependentMapping     = "Endpoint-Independent Mapping"       
-	AddressDependentFiltering      = "Address-Dependent Filtering"  
-	AddressDependentMapping        = "Address-Dependent Mapping" 
-	AddressAndPortDependentMapping = "Address and Port-Dependent Mapping" 
+	EndpointIndependentMapping     = "Endpoint-Independent Mapping"
+	AddressDependentFiltering      = "Address-Dependent Filtering"
+	AddressDependentMapping        = "Address-Dependent Mapping"
+	AddressAndPortDependentMapping = "Address and Port-Dependent Mapping"
 	ChangedAddressError            = "ChangedAddressError"
 )
 
@@ -58,6 +58,7 @@ type CLIFlags struct {
 	Software    string   `help:"Software to send for STUN request" default:"tailnode" short:"S"`
 	DerpMapUrl  string   `help:"URL to fetch DERP map from" name:"derp-map-url" default:"https://login.tailscale.com/derpmap/default"`
 	Version     bool     `help:"Show version"`
+	NoIP        bool     `help:"Omit IP addresses in output" default:"false" short:"o"`
 }
 
 var CLI CLIFlags
@@ -613,7 +614,11 @@ func printTables(results []PerServerResult, finalNAT string) {
 		ipStr := "None"
 		if r.ExternalIP != "" {
 			portStr = fmt.Sprintf("%d", r.ExternalPort)
-			ipStr = r.ExternalIP
+			if CLI.NoIP {
+				ipStr = "<omitted>"
+			} else {
+				ipStr = r.ExternalIP
+			}
 		}
 		tbl.Append([]string{
 			r.Server,
