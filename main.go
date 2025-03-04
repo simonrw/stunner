@@ -78,11 +78,19 @@ type TxID [12]byte
 
 func main() {
 	math.New(math.NewSource(time.Now().UnixNano()))
-	k := kong.Parse(&CLI)
 
-	if CLI.Version {
-		fmt.Println(Version)
-		k.Exit(0)
+	var cli CLIFlags
+	kctx := kong.Parse(&cli,
+		kong.Name("stunner"),
+		kong.Description("A CLI tool to check your NAT Type"),
+		kong.Vars{"version": Version},
+	)
+	
+
+	if cli.Version {
+		fmt.Printf("stunner %s\n", Version)
+		kctx.Exit(0)
+
 	}
 	initZapLogger(CLI.Debug)
 	defer logger.Sync()
@@ -122,7 +130,7 @@ func main() {
 	}
 
 	printTables(results, finalNAT)
-	k.Exit(0)
+	kctx.Exit(0)
 }
 
 // generate a random port in the range 49152-65535
