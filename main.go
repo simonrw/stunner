@@ -28,14 +28,13 @@ import (
 
 // NAT types
 const (
-	Blocked              = "Blocked"
-	OpenInternet         = "Open Internet"
-	FullCone             = "Full Cone"
-	SymmetricUDPFirewall = "Symmetric UDP Firewall"
-	RestricNAT           = "Restric NAT"
-	RestricPortNAT       = "Restric Port NAT"
-	SymmetricNAT         = "Symmetric NAT"
-	ChangedAddressError  = "ChangedAddressError"
+	Blocked                        = "UDP Blocked"
+	OpenInternet                   = "No NAT"
+	EndpointIndependentMapping     = "Endpoint-Independent Mapping"       
+	AddressDependentFiltering      = "Address-Dependent Filtering"  
+	AddressDependentMapping        = "Address-Dependent Mapping" 
+	AddressAndPortDependentMapping = "Address and Port-Dependent Mapping" 
+	ChangedAddressError            = "ChangedAddressError"
 )
 
 const Version = "dev"
@@ -260,22 +259,21 @@ func finalizeNAT(results []PerServerResult, ports map[int]bool) (string, string,
 	if len(ports) > 1 {
 		for _, r := range results {
 			if r.ExternalIP != "" {
-				return SymmetricNAT, r.ExternalIP, r.ExternalPort
+				return AddressAndPortDependentMapping, r.ExternalIP, r.ExternalPort
 			}
 		}
-		return SymmetricNAT, "", 0
+		return AddressAndPortDependentMapping, "", 0
 	}
 
 	// NAT RFC mappings
 	priority := map[string]int{
-		OpenInternet:         6,
-		FullCone:             5,
-		RestricNAT:           4,
-		RestricPortNAT:       3,
-		SymmetricUDPFirewall: 2,
-		SymmetricNAT:         1,
-		Blocked:              0,
-		ChangedAddressError:  0,
+		OpenInternet:                   6,
+		EndpointIndependentMapping:     5,
+		AddressDependentMapping:        4,
+		AddressAndPortDependentMapping: 3,
+		AddressDependentFiltering:      2,
+		Blocked:                        0,
+		ChangedAddressError:            0,
 	}
 	bestType := Blocked
 	bestScore := 0
@@ -311,12 +309,12 @@ func getNatType(sock *net.UDPConn, server string, software string) (string, RetV
 		if ret2.Resp {
 			return OpenInternet, ret2
 		}
-		return SymmetricUDPFirewall, ret2
+		return AddressDependentFiltering, ret2
 	}
 
 	ret2 := stunTest(sock, server, "00000006", software)
 	if ret2.Resp {
-		return FullCone, ret2
+		return EndpointIndependentMapping, ret2
 	}
 	ret3 := stunTestToIP(sock, chIP, chPort, "", software)
 	if !ret3.Resp {
@@ -325,11 +323,11 @@ func getNatType(sock *net.UDPConn, server string, software string) (string, RetV
 	if exIP == ret3.ExternalIP && exPort == ret3.ExternalPort {
 		ret4 := stunTestToIP(sock, chIP, chPort, "00000002", software)
 		if ret4.Resp {
-			return RestricNAT, ret4
+			return AddressDependentMapping, ret4
 		}
-		return RestricPortNAT, ret4
+		return AddressAndPortDependentMapping, ret4
 	}
-	return SymmetricNAT, ret3
+	return AddressAndPortDependentMapping, ret3
 }
 
 // Run a test1/test approach against a STUN server
@@ -537,7 +535,6 @@ func appendU32(b []byte, v uint32) []byte {
 	return append(b, tmp[:]...)
 }
 
-
 func probePortmapAvailability() string {
 	// Attempt to discover default gateway
 	gw, _ := gateway.DiscoverGateway()
@@ -550,7 +547,6 @@ func probePortmapAvailability() string {
 	nm.Start()
 
 	defer nm.Close()
-
 
 	pm := portmapper.NewClient(
 		func(format string, args ...interface{}) {
@@ -590,19 +586,17 @@ type NatDetail struct {
 func natDetailFor(n string) NatDetail {
 	switch n {
 	case Blocked:
-		return NatDetail{"Hard", "All inbound hole-punch attempts fail."}
+		return NatDetail{"Hard", "UDP Blocked."}
 	case OpenInternet:
-		return NatDetail{"Easy", "Public IP is directly reachable."}
-	case FullCone:
-		return NatDetail{"Easy", "An outbound port can be mapped, and reused for inbound connections."}
-	case SymmetricUDPFirewall:
-		return NatDetail{"Hard", "Heavily restricted inbound or port-changed mapping."}
-	case RestricNAT:
-		return NatDetail{"Easy", "An outbound port can be mapped, inbound only from same remote IP."}
-	case RestricPortNAT:
-		return NatDetail{"Easy", "An outbound port can be mapped, inbound only from same IP:port."}
-	case SymmetricNAT:
-		return NatDetail{"Hard", "Different public ports for each request."}
+		return NatDetail{"Easy", "No NAT."}
+	case EndpointIndependentMapping:
+		return NatDetail{"Easy", "Endpoint-Independent Mapping."}
+	case AddressDependentFiltering:
+		return NatDetail{"Hard", "Address-Dependent Filtering."}
+	case AddressDependentMapping:
+		return NatDetail{"Easy", "Address-Dependent Mapping."}
+	case AddressAndPortDependentMapping:
+		return NatDetail{"Hard", "Address and Port-Dependent Mapping."}
 	case ChangedAddressError:
 		return NatDetail{"N/A", "Error or changed address test failed."}
 	default:
