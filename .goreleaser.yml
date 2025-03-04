@@ -6,6 +6,8 @@ before:
 
 builds:
   - id: stunner
+    env:
+      - CGO_ENABLED=0
     goos:
       - darwin
       - windows
@@ -18,6 +20,7 @@ builds:
 
 archives:
   - id: stunner
+
     format: tar.gz
     builds:
       - stunner
