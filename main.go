@@ -606,6 +606,9 @@ func natDetailFor(n string) NatDetail {
 }
 
 func printTables(results []PerServerResult, finalNAT string) {
+
+	fmt.Println("================= STUN Results =================")
+
 	tbl := tablewriter.NewWriter(os.Stdout)
 	tbl.SetHeader([]string{"Stun Server", "Port", "IP", "Mapping"})
 
@@ -630,16 +633,35 @@ func printTables(results []PerServerResult, finalNAT string) {
 	tbl.SetBorder(true)
 	tbl.Render()
 
+	fmt.Println("================= NAT Type Detection =================")
+
 	details := natDetailFor(finalNAT)
 	tbl2 := tablewriter.NewWriter(os.Stdout)
-	tbl2.SetHeader([]string{"Result", "NAT Type", "Easy/Hard", "Detail"})
+	tbl2.SetHeader([]string{"Result", "NAT Type", "Easy/Hard", "Detail", "Direct Connections With"})
+
+	var directConns string
+
+	if finalNAT == OpenInternet {
+		directConns = "All"
+	} else {
+		switch details.EasyVsHard {
+		case "Easy":
+			directConns = "No NAT, Easy NAT"
+		case "Hard":
+			directConns = "No NAT Only"
+		default:
+			directConns = "Unknown"
+		}
+	}
 
 	tbl2.Append([]string{
 		"Final",
 		finalNAT,
 		details.EasyVsHard,
 		details.Notes,
+		directConns,
 	})
 	tbl2.SetBorder(true)
 	tbl2.Render()
 }
+
