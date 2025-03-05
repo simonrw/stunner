@@ -79,15 +79,15 @@ type TxID [12]byte
 func main() {
 	math.New(math.NewSource(time.Now().UnixNano()))
 
-	var cli CLIFlags
-	kctx := kong.Parse(&cli,
+	var CLI CLIFlags
+	kctx := kong.Parse(&CLI,
 		kong.Name("stunner"),
 		kong.Description("A CLI tool to check your NAT Type"),
 		kong.Vars{"version": Version},
 	)
 	
 
-	if cli.Version {
+	if CLI.Version {
 		fmt.Printf("stunner %s\n", Version)
 		kctx.Exit(0)
 
@@ -99,6 +99,7 @@ func main() {
 	var err error
 
 	if CLI.STUNServers == nil {
+		logger.Debug("Using DERP servers: ", CLI.DerpMapUrl)
 		stunServers, err = getStunServers(CLI.DerpMapUrl, CLI.STUNPort)
 		if err != nil {
 			logger.Fatal("error fetching DERP map: ", err)
