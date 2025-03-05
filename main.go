@@ -99,7 +99,7 @@ func main() {
 	var err error
 
 	if CLI.STUNServers == nil {
-		logger.Debug("Using DERP servers: ", CLI.DerpMapUrl)
+		logger.Debug("Selecting DERP servers from Derp URL: ", CLI.DerpMapUrl)
 		stunServers, err = getStunServers(CLI.DerpMapUrl, CLI.STUNPort)
 		if err != nil {
 			logger.Fatal("error fetching DERP map: ", err)

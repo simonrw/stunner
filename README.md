@@ -2,6 +2,8 @@
 
 **Stunner** is a small Go CLI tool that sends STUN Binding Requests to multiple Tailscale DERP servers (or any STUN servers you specify) and reports the resulting NAT classification. This helps you determine whether you're behind a **Full Cone**, **Symmetric** NAT, **Restricted**, or otherwise, by analyzing how multiple STUN servers perceive your external IP/port mapping.
 
+![Stunner](assets/stunner.gif)
+
 ## Features
 
 - **Multi-Server STUN**: Queries more than one server (ideally two or more) to detect NAT type accurately.
