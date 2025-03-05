@@ -42,8 +42,8 @@ Download the binary from releases
 
 
 ```
-VERSION=v0.0.5
-cur -L "https://github.com/jaxxstorm/stunner/releases/download/${VERSION}/stunner-${VERSION}-linux-amd64.tar.gz" | tar -xz
+VERSION=v0.0.8
+curl -L "https://github.com/jaxxstorm/stunner/releases/download/${VERSION}/stunner-${VERSION}-linux-amd64.tar.gz" | tar -xz
 ./stunner --version
 ```
 
