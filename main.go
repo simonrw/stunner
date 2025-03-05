@@ -90,7 +90,6 @@ func main() {
 	if CLI.Version {
 		fmt.Printf("stunner %s\n", Version)
 		kctx.Exit(0)
-
 	}
 	initZapLogger(CLI.Debug)
 	defer logger.Sync()
@@ -130,7 +129,7 @@ func main() {
 		results[i].MappingProtocol = mappingProtocol
 	}
 
-	printTables(results, finalNAT)
+	printTables(results, finalNAT, CLI.NoIP)
 	kctx.Exit(0)
 }
 
@@ -614,7 +613,7 @@ func natDetailFor(n string) NatDetail {
 	}
 }
 
-func printTables(results []PerServerResult, finalNAT string) {
+func printTables(results []PerServerResult, finalNAT string, omit bool) {
 
 	fmt.Println("================= STUN Results =================")
 
@@ -626,7 +625,7 @@ func printTables(results []PerServerResult, finalNAT string) {
 		ipStr := "None"
 		if r.ExternalIP != "" {
 			portStr = fmt.Sprintf("%d", r.ExternalPort)
-			if CLI.NoIP {
+			if omit {
 				ipStr = "<omitted>"
 			} else {
 				ipStr = r.ExternalIP
