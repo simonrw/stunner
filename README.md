@@ -42,10 +42,22 @@ Download the binary from releases
 
 
 ```
-VERSION=v0.0.5
-cur -L "https://github.com/jaxxstorm/stunner/releases/download/${VERSION}/stunner-${VERSION}-linux-amd64.tar.gz" | tar -xz
+VERSION=v0.0.8
+curl -L "https://github.com/jaxxstorm/stunner/releases/download/${VERSION}/stunner-${VERSION}-linux-amd64.tar.gz" | tar -xz
 ./stunner --version
 ```
+
+### Using Go
+
+If you have go installed you can build and install with
+
+```
+go install github.com/jaxxstorm/stunner@v0.0.8
+```
+
+The resulting binary will appear inside `$GOPATH/bin` which you may want in your `PATH`.
+
+You can run `go env | grep "GOPATH"` to double check where go considers the `GOPATH` to be.
 
 ## Usage
 
