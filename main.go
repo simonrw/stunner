@@ -66,7 +66,7 @@ func main() {
 	if CLI.JsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "")
-		encoder.Encode(results)
+		encoder.Encode(results.ToJSON())
 	} else {
 		printTables(results, CLI.NoIP)
 	}

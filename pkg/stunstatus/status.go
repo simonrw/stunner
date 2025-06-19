@@ -41,11 +41,11 @@ var (
 
 type TxID [12]byte
 type PerServerResult struct {
-	Server          string
-	NATType         string
-	ExternalIP      string
-	ExternalPort    int
-	MappingProtocol string
+	Server          string `json:"server"`
+	NATType         string `json:"nat_type"`
+	ExternalIP      string `json:"external_ip"`
+	ExternalPort    int    `json:"external_port"`
+	MappingProtocol string `json:"mapping"`
 }
 
 type STUNOptions struct {
@@ -60,6 +60,56 @@ type STUNOptions struct {
 type STUNResults struct {
 	Results  []PerServerResult
 	FinalNAT string
+}
+
+func (s STUNResults) ToJSON() STUNResultsJSON {
+	natDetail := NatDetailFor(s.FinalNAT)
+	var directConns []string
+	if s.FinalNAT == OpenInternet {
+		directConns = []string{"All"}
+	} else {
+		switch natDetail.EasyVsHard {
+		case "Easy":
+			directConns = []string{"No NAT", "Easy NAT"}
+		case "Hard":
+			directConns = []string{"No NAT Only"}
+		default:
+			directConns = []string{}
+		}
+	}
+
+	natType := NatType{
+		Result:                "Final",
+		NatType:               s.FinalNAT,
+		Difficulty:            Difficulty(natDetail.EasyVsHard),
+		Details:               natDetail.Notes,
+		DirectConnectionsWith: directConns,
+	}
+
+	return STUNResultsJSON{
+		Results: s.Results,
+		NatType: natType,
+	}
+}
+
+type Difficulty string
+
+var (
+	Easy Difficulty = "Easy"
+	Hard            = "Hard"
+)
+
+type NatType struct {
+	Result                string     `json:"result"`
+	NatType               string     `json:"nat_type"`
+	Difficulty            Difficulty `json:"difficulty"`
+	Details               string     `json:"details"`
+	DirectConnectionsWith []string   `json:"direct_connections_with"`
+}
+
+type STUNResultsJSON struct {
+	Results []PerServerResult `json:"results"`
+	NatType NatType           `json:"nat_type"`
 }
 
 type RetVal struct {
