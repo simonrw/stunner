@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	math "math/rand"
 	"os"
@@ -27,6 +28,7 @@ type CLIFlags struct {
 	DerpMapUrl  string   `help:"URL to fetch DERP map from" name:"derp-map-url" default:"https://login.tailscale.com/derpmap/default"`
 	Version     bool     `help:"Show version"`
 	NoIP        bool     `help:"Omit IP addresses in output" default:"false" short:"o"`
+	JsonOutput  bool     `help:"Output the results as JSON" default:"false" short:"j"`
 }
 
 var CLI CLIFlags
@@ -61,7 +63,13 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	printTables(results, CLI.NoIP)
+	if CLI.JsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "")
+		encoder.Encode(results)
+	} else {
+		printTables(results, CLI.NoIP)
+	}
 }
 
 func initZapLogger(debug bool) {
