@@ -1,3 +1,4 @@
+// stunstatus is a package that computes the STUN status
 package stunstatus
 
 import (
@@ -40,14 +41,20 @@ var (
 )
 
 type TxID [12]byte
+
+
+// PerServerResult stores the results of the analysis
 type PerServerResult struct {
+	// Server contains the name of the server used
 	Server          string `json:"server"`
+	// NATType is the type of NAT found
 	NATType         string `json:"nat_type"`
 	ExternalIP      string `json:"external_ip"`
 	ExternalPort    int    `json:"external_port"`
 	MappingProtocol string `json:"mapping"`
 }
 
+// STUNOptions
 type STUNOptions struct {
 	StunServers []string
 	SourcePort  int
@@ -57,6 +64,7 @@ type STUNOptions struct {
 	STUNPort    int
 }
 
+// STUNResults contains the results of the calculation
 type STUNResults struct {
 	Results  []PerServerResult
 	FinalNAT string
@@ -122,6 +130,7 @@ type RetVal struct {
 	ChangedPort  int    // what port did the STUN server see after we sent a change request
 }
 
+// ComputeSTUNStatus computes STUN status
 func ComputeSTUNStatus(mc *STUNOptions) (*STUNResults, error) {
 	if mc.DerpMapUrl == "" {
 		mc.DerpMapUrl = "https://login.tailscale.com/derpmap/default"
