@@ -1,4 +1,4 @@
-module github.com/jaxxstorm/stunner
+module github.com/simonrw/stunner
 
 go 1.23.2
 

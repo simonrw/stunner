@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
-	"github.com/jaxxstorm/stunner/pkg/stunstatus"
+	"github.com/simonrw/stunner/pkg/stunstatus"
 	"github.com/olekukonko/tablewriter"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
